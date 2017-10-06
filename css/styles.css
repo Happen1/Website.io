@@ -1,0 +1,19 @@
+* {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  color: gold;
+  line-height: 1.6;
+  font-family: monospace;
+  font-size: 15px;
+  margin: 0;
+}
+
+#showcase {
+  background-image: url("../images/lan.jpeg");
+  background-size: cover;
+  background-position: center;
+  height: 100vh;
+}
