@@ -82,3 +82,18 @@ body {
   height: 200px;
   padding-top: 20px;
 }
+
+.img {
+  width: 30px;
+}
+
+#share-buttons img {
+  width: 50%;
+  padding: 5px;
+  border: 0;
+  box-shadow: 0;
+  display: inline;
+  /*zoom: 0.5;
+  -moz-transform: scale(2.5);
+  -webkit-transform: scale(2.5);*/
+}
