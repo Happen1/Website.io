@@ -47,3 +47,26 @@ body {
   background: gold;
   color: bold black;
 }
+
+#section-a {
+  padding: 20px;
+  background: black;
+  text-align: center;
+}
+
+#section-b {
+  padding: 20px;
+  background: darkblue;
+  text-align: center;
+}
+
+#section-c {
+  display: flex;
+  padding: 20px;
+  background: #926239;
+  color: white;
+}
+
+#section-c div {
+  padding: 20px;
+}
