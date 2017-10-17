@@ -1,0 +1,161 @@
+$(document).ready(function() {
+	// The new tab-panel gets clicked when it loads.
+  var get_tab = document.getElementById("projInfo");
+	get_tab.click()
+  // get_tab.style.backgroundColor= "#f1f1f1"
+
+
+});
+
+//For getting CSRF token
+function getCookie(name) {
+	var cookieValue = null;
+	if (document.cookie && document.cookie != '') {
+		var cookies = document.cookie.split(';');
+		for (var i = 0; i < cookies.length; i++) {
+			var cookie = jQuery.trim(cookies[i]);
+			// Does this cookie string begin with the name we want?
+			if (cookie.substring(0, name.length + 1) == (name + '=')) {
+				cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+				break;
+			}
+		}
+	}
+	return cookieValue;
+}
+
+// Ajax call for subscribe to project
+$("#subscribe_btn").click(function(e) {
+	e.preventDefault();
+	$("#subscribe_btn").text("please wait...");
+	//picking phone number from input box and assigning to variable
+	var phone_number = $('#id_phone_number').val();
+	//picking rest of data from the page and asssignin to variables
+	var project_url = window.location.href;
+	var project_id = $("#get_project_id ").val();
+	var project_name = $("#get_project_name").val();
+	var userId = $("#get_user_id").val();
+	var user_email = $("#get_user_email").val();
+	var username = $("#get_user_username").val();
+	var user_fullname = $("#get_user_fullname").val();
+	var subscribe_status = "YES";
+
+
+	//Prepare csrf token
+	var csrftoken = getCookie('csrftoken');
+	$.ajax({
+		url: "/project-details/" + project_id, // the endpoint,commonly same url
+		type: "POST", // http method
+		data: {
+			csrfmiddlewaretoken: csrftoken,
+			phone_number: phone_number,
+			projectId: project_id,
+			project_name: project_name,
+			current_url: project_url,
+			user_id: userId,
+			user_email: user_email,
+			userName: username,
+			user_fullName: user_fullname,
+			subscribe_status: subscribe_status
+		}, // data sent with the post request
+
+		// handle a successful response
+		success: function(data) {
+			subscribe_btn_id = "#unsubscribe-btn";
+			$(subscribe_btn_id).text('UnSubscribe').attr("href", "#");
+			$("#subscribe_btn").text("Subscribe");
+			$(".remodal-close").click();
+			swal("Good job!",
+				"You just subscribed to this project! please check your text message and email for confirmation",
+				"success");
+		}
+	});
+});
+
+
+ //Ajax code for Likes on project details page.
+$('body').on('click', '.like-btn', function() {
+	var project_id = $("#get_project_id ").val();
+	var reference = this;
+	$.ajax({
+		url: "/likes/", // the endpoint,commonly same url
+		type: "POST", // http method
+		data: {
+			csrfmiddlewaretoken:$("input[name=csrfmiddlewaretoken]").val(),
+			project_id: project_id,
+
+		}, // data sent with the post request
+
+		// handle a successful response
+		success: function() {
+			$(reference).addClass("like-thumbs-up");
+			var get_count = $(reference).text(); // get text on page
+			var show_count = parseInt(get_count); // convert from string to int
+			var add_one_to_likes = show_count+1; // increase count after like by 1
+			console.log(add_one_to_likes);
+			$(reference).text(add_one_to_likes); // show count increment by 1
+		},
+		error: function () {
+			alert("Please login to like the project")
+		}
+	});
+
+});
+
+
+$('body').on('click', '.list-page-like', function () {
+	var project_id = $(this).attr('data-value');
+	var reference = this;
+	$.ajax({
+		url: "/likes-on-listing-page/", // the endpoint,commonly same url
+		type: "POST", // http method
+		data: {
+			csrfmiddlewaretoken:$("input[name=csrfmiddlewaretoken]").val(),
+			project_id: project_id
+
+		}, // data sent with the post request
+
+		// handle a successful response
+		success: function() {
+			$(reference).find("i").addClass('after_like'); // find the i that will contain the new css class
+			var get_count = $(reference).text(); // get text on page
+			var show_count = parseInt(get_count); // convert from string to int
+			var add_one_to_likes = show_count+1; // increase count after like by 1
+			$(reference).find("a").text(add_one_to_likes); // show count increment by 1
+
+		}
+	//	error: function(){
+	//		alert('Already liked the project');
+	//		var get_count = $(reference).text(); // get text on page
+	//		var show_count = parseInt(get_count); // convert from string to int
+	//		var add_one_to_likes = show_count+0; // increase count after like by 1
+	//		$(reference).find("a").text(add_one_to_likes); // show count increment by 1
+  //}
+	});
+});
+
+
+// show alert if user not signed.
+$(".sign-in-before-like").click(function(e){
+	e.preventDefault();
+	alert("Please login to like the project");
+
+});
+
+// handles project details url
+if (window.location.hash === '#subscribe_to_project') {
+	// Refreshes the page and removes modal url after reload.
+	window.history.pushState("object", "title", window.location.href.split('#')[0])
+}
+
+//elective maths, elective physics, technical drawing, building and construction.
+
+$(document).on('click', '.hello', function(){
+	var helloid = this;
+	var print = $(helloid).text("change me");
+
+	//var passed = parseInt(print);
+	//var add = passed +1
+	$(helloid).find("i").addClass('last');
+	console.log($(helloid).find("i").addClass('last'))
+});

@@ -1,0 +1,349 @@
+/*------------------------------------------------------------------
+[Master Stylesheet]
+
+- MAIN CSS
+- FONTS
+- PLUGIN CSS
+
+Author:     Andrey Sokoltsov
+Profile:    http://themeforest.net/user/andreysokoltsov
+-------------------------------------------------------------------*/
+
+/* MAIN CSS */
+@import url('font-awesome.min.css');
+@import url('bootstrap.min.css');
+@import url('bootstrap-slider.css');
+@import url('colors.css');
+@import url('theme.css');
+@import url('responsive.css');
+@import url('datepicker.css');
+@import url('font-style.css');
+@import url('animate.css');
+
+
+
+/* FONTS */
+@import url('https://fonts.googleapis.com/css?family=Open+Sans:400,300,300italic,400italic,600,600italic,700,700italic,800,800italic&subset=latin,cyrillic-ext,latin-ext,cyrillic');
+
+
+
+/* PLUGIN CSS */
+@import url('../assets/slider-pro/css/slider-pro.min.css');
+@import url('../assets/chosen/chosen.css');
+/*
+CUSTOM CSS
+*/
+.pagination>li>a, .pagination>li>span { border-radius: 50% !important;margin: 0 5px;}
+.panel {
+    border: 0;
+    border-radius: 2px;
+    margin-bottom: 20px;
+    background-color: #fff;
+    position: relative;
+    -webkit-box-shadow: none;
+    box-shadow: none;
+}
+
+/* Main carousel style */
+.carousel {
+    width: 600px;
+}
+
+/* Indicators list style */
+.article-slide .carousel-indicators {
+    bottom: 0;
+    left: 0;
+    margin-left: 5px;
+    width: 100%;
+}
+/* Indicators list style */
+.article-slide .carousel-indicators li {
+    border: medium none;
+    border-radius: 0;
+    float: left;
+    height: 54px;
+    margin-bottom: 5px;
+    margin-left: 0;
+    margin-right: 5px !important;
+    margin-top: 0;
+    width: 100px;
+}
+/* Indicators images style */
+.article-slide .carousel-indicators img {
+    border: 2px solid #FFFFFF;
+    float: left;
+    height: 54px;
+    left: 0;
+    width: 100px;
+}
+/* Indicators active image style */
+.article-slide .carousel-indicators .active img {
+    border: 2px solid #428BCA;
+    opacity: 0.7;
+}
+.subscribe-button{
+    border-radius: 0px;
+}
+
+
+/*
+what others say about transgov
+*/
+.advocates-position{
+    color: black;
+}
+.advocates-name{
+    color: black;
+}
+.lead {
+    margin-bottom: 20px;
+    font-size: 16px;
+    font-weight: 300;
+    line-height: 1.4;
+    color: black;
+}
+@import url(//maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css);
+/*body { padding-top: 60px; }*/
+.recommendations.nav.nav-justified > li > a { position: relative; }
+.recommendations.nav.nav-justified > li > a:hover,
+.recommendations.nav.nav-justified > li > a:focus { background-color: transparent; }
+.recommendations.nav.nav-justified > li > a > .quote {
+    position: absolute;
+    left: 0px;
+    top: 0;
+    opacity: 0;
+    width: 30px;
+    height: 30px;
+    padding: 5px;
+    background-color: #13c0ba;
+    border-radius: 15px;
+    color: #fff;
+}
+.nav.nav-justified > li.active > a > .quote { opacity: 1; }
+.nav.nav-justified > li > a > img { box-shadow: 0 0 0 5px #13c0ba; }
+.nav.nav-justified > li > a > img {
+    max-width: 100%;
+    opacity: .3;
+    -webkit-transform: scale(.8,.8);
+            transform: scale(.8,.8);
+    -webkit-transition: all 0.3s 0s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: all 0.3s 0s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.nav.nav-justified > li.active > a > img,
+.nav.nav-justified > li:hover > a > img,
+.nav.nav-justified > li:focus > a > img {
+    opacity: 1;
+    -webkit-transform: none;
+            transform: none;
+    -webkit-transition: all 0.3s 0s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: all 0.3s 0s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.tab-pane .tab-inner { padding: 30px 0 20px; }
+
+@media (min-width: 768px) {
+    .nav.nav-justified > li > a > .quote {
+        left: auto;
+        top: auto;
+        right: 20px;
+        bottom: 0px;
+    }
+}
+#myCarousel{
+    width: 100%;
+}
+
+
+
+/*
+CUSTOM FORMS FOR MODAL
+*/
+
+.form_main {
+    width: 100%;
+}
+.form_main h4 {
+    font-family: roboto;
+    font-size: 20px;
+    font-weight: 300;
+    margin-bottom: 15px;
+    margin-top: 20px;
+    /*text-transform: uppercase;*/
+}
+.heading {
+    border-bottom: 1px solid #fcab0e;
+    padding-bottom: 9px;
+    position: relative;
+}
+.heading span {
+    background: #9e6600 none repeat scroll 0 0;
+    bottom: -2px;
+    height: 3px;
+    left: 0;
+    position: absolute;
+    width: 75px;
+}
+.form {
+    border-radius: 7px;
+    padding: 6px;
+}
+.txt[type="text"] {
+    border: 1px solid #ccc;
+    margin: 10px 0;
+    padding: 10px 0 10px 5px;
+    width: 100%;
+}
+.txt_3[type="text"] {
+    margin: 10px 0 0;
+    padding: 10px 0 10px 5px;
+    width: 100%;
+}
+.txt2[type="submit"] {
+    background: #242424 none repeat scroll 0 0;
+    border: 1px solid #4f5c04;
+    border-radius: 25px;
+    color: #fff;
+    font-size: 16px;
+    font-style: normal;
+    line-height: 35px;
+    margin: 10px 0;
+    padding: 0;
+    text-transform: uppercase;
+    width: 30%;
+}
+.txt2:hover {
+    background: rgba(0, 0, 0, 0) none repeat scroll 0 0;
+    color: #5793ef;
+    transition: all 0.5s ease 0s;
+}
+
+
+/*
+########################  CUSTOM CSS FOR PAGINATION  ###########################
+*/
+
+.pagination>.active>a, .pagination>.active>a:focus, .pagination>.active>a:hover, .pagination>.active>span, .pagination>.active>span:focus, .pagination>.active>span:hover {
+    z-index: 2;
+    color: #fff;
+    cursor: default;
+    background-color: #66AD4C;
+    border-color: #66AD4C;
+}
+
+/*
+######################### CSS FOR RETURN TO PROJECT BUTTON ###################
+*/
+.btn_return_to_projects{
+    border-radius: 0px;
+}
+
+/*
+SAVE SUBSCRIBE BUTTON
+*/
+.subscribe_to_project {
+  padding: 13px 30px;
+  background: white;
+  color: #66AD4C;
+  border-radius: 60px;
+  border: 2px solid #66AD4C;
+  cursor: pointer;
+  /*font-size: 0.7em;*/
+  display: block;
+  text-transform: lowercase !important;
+  transition: all 0.2s;
+  text-align: center;
+  width: 200px;
+  /*position: relative;*/
+  top: 150px;
+  text-align: center;
+  /*margin: 0 auto;*/
+  margin-left: 38%;
+}
+
+.subscribe_to_project:hover{
+    background-color: #66AD4C;
+    color: #ffffff;
+    margin-left: 38%;
+
+}
+.subscribe-modal-body {
+    width: 148%;
+    margin-top: -36px;
+}
+
+.phone_number{
+     border-radius: 0px;
+
+}
+.phone_number:focus{
+    border-color: #66AD4C;
+}
+
+.subscribe_form{
+    width: 60%;
+    margin-left: 23%;
+}
+.subscribe_form_label{
+    font-weight: normal;
+    float: left;
+}
+
+/*#preview-content{*/
+    /*text-overflow: ellipsis;*/
+    /*white-space: nowrap;*/
+/*}*/
+.preview-content {
+    display: table;
+    table-layout: fixed;
+    width: 100%;
+    white-space: nowrap;
+}
+
+.preview-content > * {
+    display: table-cell;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/*.preview-similar-content{*/
+/*display: table;*/
+    /*table-layout: fixed;*/
+    /*width: 100%;*/
+    /*white-space: nowrap;*/
+/*}*/
+/*.preview-similar-content > * {*/
+    /*display: table-cell;*/
+    /*overflow: hidden;*/
+    /*text-overflow: ellipsis;*/
+/*}*/
+
+/*
+###################### CUSTOM CSS FOR SHARE BUTTON ON PROJECT DETAILS PAGE ###################
+*/
+
+.social_media_share {
+  margin-top: 20px;
+}
+.hide_projectId_li_element{
+  display:none;
+}
+
+
+/*
+Like button css
+*/
+.like-thumbs-up{
+    color: #66AD4C;
+    text-shadow: 1px 1px 1px #ccc;
+    font-size: 1.2em;
+    margin-left: 20px;
+   cursor: not-allowed;
+   pointer-events: none;
+}
+
+/*.like-btn {*/
+    /*/!*color: #7f7f7f;*!/*/
+    /*font-size: 1.2em;*/
+    /*margin-left: 20px;*/
+/*}*/
+
+
+

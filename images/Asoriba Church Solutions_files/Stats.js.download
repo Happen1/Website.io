@@ -1,0 +1,197 @@
+"use strict";
+
+var Stats = (function() {
+
+	var _noAudioHits = {};
+	var _stats = [];
+	var _stopLooping = false;
+	var _remoteStreamLoop = null;
+	var _callback = null;
+	var _rttArray = [];
+
+	function average (values) {
+		try {
+			var sum = 0;
+
+			if ( values.length == 0 )
+				return -1;
+			
+			for (var i = 0; i < values.length; i++) 
+				sum += values[i];
+
+			// console.log("sum: " + sum);
+			// console.log("len: " + values.length);
+			return Math.round(sum / values.length);
+		}
+		catch (e) {
+			console.error(e);
+			return -1;
+		}
+	}
+
+	function startMonitoring(pc, callback, callID) {
+		try {
+			_stats = {};
+			_rttArray = [];
+			_stats.callID = callID;
+			_stopLooping = false;
+			_noAudioHits.remote = 0;
+			_noAudioHits.local = 0;
+			_noAudioHits.outboundSameRead = 0;
+
+			setTimeout( function() { checkStats(pc, pc.getLocalStreams()[0].getAudioTracks()[0]); }, 1000);
+			setTimeout( function() { checkStats(pc, pc.getRemoteStreams()[0].getAudioTracks()[0]); }, 1000);
+
+			_callback = callback;
+		}
+		catch (e) {
+			console.error(e);
+		}
+	}
+
+	function stopMonitoring() {
+		try {
+			_stopLooping = true;
+
+			if ( _stats.lastRead )
+				return;
+
+			_stats.lastRead = true;
+
+			if ( _callback )
+				_callback(_stats);
+		}
+		catch (e) {
+			console.error(e);
+		}
+	}
+
+	function checkStats(pc, selector) {
+		if ( _stopLooping )
+			return;
+
+		var timeOut = 1500; 
+
+		setTimeout(function () {
+			pc.getStats(selector, function (report) {
+				
+				for (var i in report) {	
+					try {
+						var now = report[i];
+						var rtt = undefined;
+
+						if ( navigator.mozGetUserMedia ) {
+							// console.log(now);
+							// return; // disabled for Firefox
+							
+							if ( now.type != "outboundrtp" && now.type != "inboundrtp" )  
+								continue;
+
+							if ( now.mozRtt )
+								rtt = now.mozRtt;
+						}
+						else {
+							if ( now.type != "ssrc" )
+								continue;
+
+							// console.error("---------------->" + now.googRtt);
+							// console.error(now);
+
+							if ( now.audioOutputLevel !== undefined ) {
+								_stats.audioOutputLevelChange = ((now.audioOutputLevel - _stats.audioOutputLevel) / 100).toFixed(2);
+								_stats.audioOutputLevelDecreasing = now.audioOutputLevel < _stats.audioOutputLevel;
+								_stats.audioOutputLevel = now.audioOutputLevel;
+							}
+
+							if ( now.audioInputLevel !== undefined ) {
+								_stats.audioInputLevelChange = ((now.audioInputLevel - _stats.audioInputLevel) / 100).toFixed(2);
+								_stats.audioInputLevelDecreasing = now.audioInputLevel < _stats.audioInputLevel;
+
+								if ( now.audioInputLevel == _stats.audioInputLevel ) // same read? mic disconnected?
+									_noAudioHits.outboundSameRead++;		
+								else {
+									_stats.audioInputLevel = now.audioInputLevel;
+									_noAudioHits.outboundSameRead = 0;
+								}
+							}
+
+							if ( now.googRtt ) {
+								rtt = now.googRtt;
+							}
+
+							// 6 seconds of no audio, we alert
+							if ( _stats.audioOutputLevel <= 0 && ++_noAudioHits.remote > 8 ) 
+								_stats.remoteNoAudio = true;
+							else if ( _stats.audioOutputLevel > 0 ) {
+								_noAudioHits.remote = 0;
+								_stats.remoteNoAudio = false;
+							}
+
+							if ( (_stats.audioInputLevel <= 0 && ++_noAudioHits.local > 4) /* || _noAudioHits.outboundSameRead > 10 */) 
+								_stats.localNoAudio = true;
+							else if ( _stats.audioInputLevel > 0 ) {
+								_noAudioHits.local = 0;
+								_stats.localNoAudio = false;
+							}
+
+						}
+
+						// console.log("--- ");
+						// console.log("avgRtt: " + rtt);	
+
+						if ( rtt ) {
+							if ( _rttArray.length >= 7 ) // last 7 seconds sample
+								_rttArray.shift();
+
+							_rttArray.push(parseInt(rtt));
+							_stats.rtt = average(_rttArray);
+							_stats.rttScore = undefined;
+
+							// _stats.rtt = 1000;
+
+							// console.log("rtt " + rtt);
+							// console.log("avg rtt " + _stats.rtt);
+
+							if ( _stats.rtt / 2 >= 400 )
+								_stats.rttScore = 1;
+							else if ( _stats.rtt / 2 >= 300 )
+								_stats.rttScore = 2;
+							else if ( _stats.rtt / 2 >= 200 )
+								_stats.rttScore = 3;
+							else if ( _stats.rtt / 2 >= 100 )
+								_stats.rttScore = 4;
+							else if ( _stats.rtt / 2 < 100 )
+								_stats.rttScore = 5;
+
+						}
+
+						if ( now.packetsSent > 0 )
+							_stats.outboundLoss = (now.packetsLost / now.packetsSent * 100).toFixed(2);
+
+						if ( now.packetsReceived > 0 )
+							_stats.inboundLoss = (now.packetsLost / now.packetsReceived * 100).toFixed(2);
+
+					}
+					catch (e) {
+						console.error(e);
+					}
+				}
+			}, function (e) { console.error(e); }); // getStats()
+
+			if ( _stopLooping )	
+				return;
+			
+			if ( _callback )
+				_callback(_stats);
+
+			checkStats(pc, selector);
+		
+		}, timeOut); // setTimeout()
+	}
+
+	return {
+		startMonitoring : startMonitoring,
+		stopMonitoring : stopMonitoring
+	}
+
+})();

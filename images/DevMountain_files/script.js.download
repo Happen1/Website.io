@@ -1,0 +1,45 @@
+$('document').ready(function() {
+
+	window.showApply = function() {
+		//$("#appModal").modal();
+	}
+	window.showApplyMentor = function() {
+		$("#appMentorModal").modal();
+	}
+	window.showApplyEmployer = function() {
+		$("#appEmployerModal").modal();
+	}
+	window.showVideo = function() {
+		$("#appVideoModal").modal();
+	}
+	$('.apply-winter').click(function() {
+		window.showApply();
+	});
+	$('.apply-mentor').click(function() {
+		window.showApplyMentor();
+	});
+	$('.apply-employer').click(function() {
+		window.showApplyEmployer();
+	});
+	$('.show-video').click(function() {
+		window.showVideo();
+	});
+
+  $('.btn-inquiry-modal').click(function(e) {
+    var src = $(window.event.target).closest(".btn-inquiry-modal").attr('data-src')
+    $("#pardotSyllabusForm").attr("src",src);
+    setTimeout(function(){
+      $("#appInquiryModal").modal();
+    }, 100);
+  });
+
+  // $('#index-inquiry-submit').on('click', function(event) {
+
+  // });
+
+	//check to see if we need to show apply automatically
+	var hash = window.location.hash;
+	if (hash.indexOf('/apply') > -1) {
+		window.showApply();
+	}
+});

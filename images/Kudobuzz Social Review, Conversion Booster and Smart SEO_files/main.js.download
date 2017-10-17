@@ -1,0 +1,33 @@
+(function($){
+    "use strict";
+
+    $(document).ready(function(){
+		$('.slider-top').slick({
+		  autoplay: true,
+		  autoplaySpeed: 2000,
+		  arrows:false,
+		});
+		$('[data-toggle="tooltip"]').tooltip();
+
+		$("#open-menu").on('click',function(){
+			$("#menu-responsive").show();
+		});
+
+		$("#menu-close").on('click',function(){
+			$("#menu-responsive").hide();
+		});
+
+		$(window).scroll(function (event) {
+		    var scroll = $(window).scrollTop();
+		    var body = $("body");
+		    if(scroll  > 50) {
+		    	if(!body.hasClass("hide-top")){
+		    		body.addClass("hide-top");
+		    	}
+		    }else{
+		    	body.removeClass("hide-top");
+		    }
+		});
+	});
+
+})(jQuery);    

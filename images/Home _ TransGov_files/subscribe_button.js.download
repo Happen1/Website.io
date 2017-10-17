@@ -1,0 +1,74 @@
+//<input type="hidden" id="myprojectid" value="{{project.id}} />
+
+// $(document).ready(function(){
+//        $('#subscribe_btn').click(function() {
+//        $.ajax({
+//            type: "POST",
+//            url: "user-subscribe",
+//            data: {
+//                'project_id' : $('#myproject_id').val(),
+//                'phone_number' : $('#phone_number').val(),
+//                'csrfmiddlewaretoken' : $("input[name=csrfmiddlewaretoken]").val()
+//            },
+//            success: function searchSuccess(data, textStatus, jqXHR)
+//            {
+//                console.log('done')
+//            },
+//            dataType: 'html'
+//        });
+//
+//    });
+// });
+
+
+
+//$(document).ready(function(){
+//       $('#save-bio').click(function(e) {
+//            //authroBio = $(".authorBio").val();
+//           //if(authroBio == ""){
+//           //    alert("Remember you didn't enter your Bio, you could update it later.")
+//           //}
+//           e.preventDefault();
+//
+//
+//       $.ajax({
+//           type: "POST",
+//           url: "/add-author-bio",
+//           data: {
+//               'facebookLink' : $('.facebookLink').val(),
+//               'twitterLink' : $('.twitterLink').val(),
+//               'linkedInLink' : $('.linkedInLink').val(),
+//               'authorWebsite' : $('.authorWebsite').val(),
+//               'authorBio' : $('.authorBio').val(),
+//               'authorImage' : document.getElementById("id_authorImage").files[0].name,
+//               'csrfmiddlewaretoken' : $("input[name=csrfmiddlewaretoken]").val()
+//           },
+//           success: function () {
+//
+//           },
+//           dataType: 'html'
+//       });
+//
+//   });
+//});
+//$(document).ready(function(){
+//       $('#subscribe').click(function(e) {
+//
+//              var project_id = $(this).attr('id_project_name');
+//           console.log(project_id)
+//
+//           e.preventDefault();
+//
+//
+//       $.ajax({
+//            type: "GET",
+//            url: "http://localhost:8000/project-details/project_id",
+//            dataType: "json",
+//            data: { "project_name": $("id_project_name").val() },
+//            success: function(data) {
+//                alert(data.message);
+//            }
+//        });
+//
+//   });
+//});

@@ -1,0 +1,2263 @@
+/**  
+  * @desc UAC client for Toky
+  * @author Abigail Acuna <abigail@latamvoices.com>
+  * @author Carlos Ruiz Díaz <carlos@toky.co>
+  * August, 2015
+*/
+'use strict'
+
+var _ui = {};
+var _ua = null;
+var _selectSection = false;
+
+var _errorMsg1 = '';
+var _errorMsg2 = '';
+var _errorType = 0;
+var _tokyReady = false;
+var _window = $(window);
+var _voicemailTimer = 0;
+
+var Toky  = {
+	init : function (companyID, sectionID, optionID, authRequired, callNow, authenticatedVia) {
+		
+		if (!isBrowserCapable()) return;
+		
+		try {
+			Main.intlTelInput();
+		}
+		catch (e) {
+			console.error(e);
+			//Raven.captureException(e);
+		}
+			
+		_data.customer.referer = $(location).attr('hostname');
+		_data.companyID = companyID;
+		_data.sectionID = sectionID;
+		_data.optionID = optionID;
+		_data.authRequired = authRequired > 0;
+		_data.callNow = callNow > 0;
+		
+		if ( _config.isMobile ) // disable "callNow" when accessed by mobile, else, keep awake video won't work
+			_data.callNow = false;
+
+		_data.requestData = Config.request_data;
+		_data.clientData = {};
+		_data.authenticatedVia = authenticatedVia;
+
+		loadLangPack().done( function (data) {
+			_config.lang = $.parseJSON(data);
+
+			if (_config.actualLang != 'en') {
+				getLangFiles('en').done( function (data) { 
+					_config.backupLang = $.parseJSON(data);
+
+					$(document).ready(onDocumentReady);
+				});
+
+				return;
+			}
+
+			$(document).ready(onDocumentReady);
+		}).fail( function (data) {
+			_config.lang = [];
+
+			getLangFiles('en').done( function (data) { 
+					// _config.lang = $.parseJSON(data);
+
+					_config.backupLang = $.parseJSON(data);
+
+					$(document).ready(onDocumentReady);
+
+			}).fail( function () {
+				_config.backupLang = [];
+				$(document).ready(onDocumentReady);
+			});
+		});
+		
+		_window.resize(function(){
+			showErrorMessage(false);
+		});
+		showErrorMessage(false);
+		
+		_data.callExtraInfo = getUrlParameter('params');
+	}
+};
+
+var _config =  {
+	buildRequestUri : function (userPart, companyId, sectionId, optionId) {
+		return userPart + "@" + _config.data.sip.domain + 
+								";company=" + companyId + 
+								";section=" + sectionId + 
+								";option=" + optionId; 
+	},
+
+	loaded : false,
+	callAnswered : false,
+	callCancelled : false,
+	rateCount : 0,
+	defaultLang : 'en',
+	actualLang : 'en',
+	lang : null,
+	backupLang : null,
+	
+	ringing_wait_time : 7500,
+
+	data : { 
+			callNow : false,
+			startTime : undefined,
+			endTime : undefined,
+			customer : {}
+	},
+	isMobile : ((navigator.platform.toLowerCase().match(/android/i) || navigator.platform.toLowerCase().match(/arm/i)) ? true : false) 
+};
+
+var _data = {
+	
+	userTrack : '',
+	agent : null,
+	customer : { id : null, country : null, referer : null, isAnon : true },
+	callData : { },
+	call_id : null,
+	browser_ua : null,
+	audioContext : null,
+	callReferred : false,
+	greetingRefer : false, 
+	session : null,
+	companyID : null,
+	sectionID : null,
+	optionID : null,
+	authRequired : false,
+	isPopup : false,
+	connectingTimer : null,
+	loadingTimer : null,
+	reallyLoadingTimer : null,
+	callNow : false,
+	authenticatedVia : null,
+	callExtraInfo : null,
+	mediaAcquired : false
+};
+
+function onDocumentReady() {
+	
+	if (!isBrowserCapable()) {
+		try {
+			Main.unsopported();	
+		} catch (e) {
+			//window.location.replace("/error/unsupported/");	
+		}
+
+		return;
+	}
+	
+	_ui = {
+		phone : $('#phone-box'),
+		
+		bubble 			: $('#bubble-agent'),
+		modalMessage 	: $('#Message'),
+		tokyClose 		: $('.toky-close'),
+		generalError	: $('#generalError'),
+		selectSetions   : $('.link-profile-info'),
+		linkProfilePic  : $('.link-profile-pic'),
+		responsiveError : $('#responsiveError'),
+		filterMsgError  : $('.filterMsgError'),
+		itemDesc		: $('.item-description'),
+		loginRequired 	: $('#loginRequired'),
+		fbLogin 		: $('#fbLogin'),
+
+		name            : $("#name"),
+        companyLogo     : $("#companyLogo,#companyLogo2"),
+        days            : $("#days"),
+        social          : $("#social"),
+        schedule        : $("#schedule"),
+        country         : $("#country"),
+        call            : $("#callButton"),
+        callSection     : $("#callSection"),
+        ratingSection 	: $("#ratingSection"),
+        errorSection 	: $("#errorSection"),
+        openingStatus 	: $("#openingStatus"),
+        company         : $("#company"),
+        section         : $("#section"),
+        option          : $("#option"),
+        tempStatus      : $("#tempStatus"),
+
+		requestMic  : null,
+
+		audio : {
+			"error" 	: $("#errorAudio"),
+			"ringing" 	: $("#ringAudio"),
+
+			"dtmf_0"	: $("#dtmf0"),
+			"dtmf_1"	: $("#dtmf1"),
+			"dtmf_2"	: $("#dtmf2"),
+			"dtmf_3"	: $("#dtmf3"),
+			"dtmf_4"	: $("#dtmf4"),
+			"dtmf_5"	: $("#dtmf5"),
+			"dtmf_6"	: $("#dtmf6"),
+			"dtmf_7"	: $("#dtmf7"),
+			"dtmf_8"	: $("#dtmf8"),
+			"dtmf_9"	: $("#dtmf9"),
+			"dtmf_pound"	: $("#dtmfPound"),
+			"dtmf_star"		: $("#dtmfStar")
+		},
+
+		video			: $("#remoteMedia"),
+		rating 			: $("[id^=rating]"),
+		callRating 		: $("#callRating"),
+		callRatingLabel : $("[id^=ratingCallLabel]"),
+
+		daysDiv 		: $("#daysDiv"),
+		scheduleDiv 	: $("#scheduleDiv"),
+		countryDiv 		: $("#countryDiv"),
+		socialDiv 		: $("#socialDiv"),
+
+
+		companyBio		: $('#bio'),
+		companyProfile 	: $('#companyProfile'),
+		agentProfile 	: $('#agentProfile'),		
+
+		inCallSection 	: $("#page"),
+		inCallBtn		: $("#show-call"),
+		
+		agent 			: {
+							section : $("#agent"),
+							name : $("#agentName,#agentName2"),
+							pic : $("#agentProfilePic,#agentProfilePic2")
+						  },
+
+		incall : {  hangupRetry : $("[id^=hangup_retry]"),
+					// hold 		: $("[id^=hold]"),
+					mute 		: $("[id^=mute]"),
+					message 	: $("[id^=message]"),
+					muteLegend	: $("[id^=muteLegend]"),
+
+					timer 		: $("[id^=callTimer]"), // reference to both timers
+					
+					callStatus 	: $("[id^=callStatus]"),
+					description : $("#description"),
+					errorAlert	: $("#error-alert")
+				 },
+
+		keepAwakeVideo : $("#keepAwakeVideo") 
+	};
+	
+	closeBtnShow(true);
+	setupHookForUnload();
+	phoneInitialize();
+	
+	_ui.incall.hangupRetry.on('click', hangupOnClick);
+	_ui.incall.mute.on('click', muteOnClick);
+	_ui.call.on('click', function() {
+
+		if ( _config.isMobile ) {
+			_ui.keepAwakeVideo.prop('muted', true);
+			_ui.keepAwakeVideo.hide();
+			_ui.keepAwakeVideo.get(0).play();
+
+			console.log("Played Keep-Awake video");
+		}
+
+		if (Config.call_enable) {
+			beforeStartCall();	
+		}
+	});
+	
+	if (!Config.call_enable) {
+		_ui.call.attr('href', 'https://app.toky.co/'+Config.handle+'?callnow&option='+_data.optionID);
+		_ui.call.attr('target','_blank');
+	}
+		
+	$(window).on('unload', onWindowUnload); 
+	
+	getParameters().done(function(data) {		
+		contactForm();
+		register(data);		
+	});
+	
+	_data.isPopup = window.location.search.substring(1).indexOf("popup") >= 0;
+	_data.callNow = !_config.isMobile && window.location.search.substring(1).indexOf("callnow") >= 0;
+
+	Device.setOnDefaultChangedHandler(function() {
+		console.log("-- Default audio settings changed");
+		attachToSelectedSpeaker();
+	});
+
+	attachToSelectedSpeaker();
+}
+
+function attachToSelectedSpeaker() {
+	try {
+		var selectedDevice = Device.getDefault();
+
+		Device.getAll(selectedDevice, function(selected, all) {
+			if ( !selected || !selected.output )
+				return;
+			
+			Device.attachToDevice(_ui.video.get(0), selected.output);	
+		});
+	}
+	catch (e) {
+		console.error(e);
+	}
+}
+
+function connectToToky() {
+	
+	// _data.loadingTimer = setTimeout(function() {
+	// 	_ui.call.html('<i class="cta-talkie"></i> ' + trans('still_loading'));
+	// 	_data.reallyLoadingTimer = setTimeout( function() {
+	// 		_ui.call.html('<i class="cta-talkie"></i> ' + trans('really_loading'));
+	// 	}, 6000);
+	// }, 6000);
+	try {
+		if ( _ua != null && _ua.isRegistered() )
+			return;
+	}
+	catch (e) {
+		console.error(e);
+	}
+
+	var options = {
+		uri: _config.data.sip.uri,
+		authorizationUser : _config.data.sip.username,
+		password : _config.data.sip.password,
+		wsServers: _config.data.sip.ws_servers,
+		wssServers: _config.data.sip.wss_servers,
+		register: _config.data.sip.register,
+		displayName : _config.data.sip.displayName,
+		traceSip: _config.data.sip.trace_sip,
+		turnServers : _config.data.sip.turn_servers,
+		stunServers : _config.data.sip.stun_servers,
+		log : { builtinEnabled : true, level : _config.data.sip.log_level },
+		iceCheckingTimeout : 2500,
+		video: false,
+		audio: true,
+		userAgentString: 'toky/web/widget/customer/' + _data.browser_ua,
+		register : false
+	};
+
+	_ua = new SIP.UA(options);
+
+	_ua.on('registered', onRegistered);
+	_ua.on('disconnected', onRegisterError);
+	_ua.on('registrationFailed', onRegisterError);
+	_ua.on('invite', function (session) {
+		console.warn("Incoming call received. Rejecting. Can't receive calls in this context");
+		session.reject();
+	});
+
+	_ua.on('message', function (message) {
+		if (message.body.indexOf("winner-agent") >= 0) {
+			var param = message.body.split(";");
+
+			if (param[1])
+				getAgentInfo(param[1]).done(onAgentRetrieved); 
+		}
+	});
+
+	_ua.register();
+}
+
+function register(data) {
+	if (!data.success) {
+		console.error(data.message);
+		// alert(data.message);
+		return;
+	}
+	
+	_config.data = data;
+
+	_data.customer.id = data.customer_id;
+	_data.customer.country = data.connection_country;
+	_data.customer.isAnon = data.is_anon;
+	_data.customer.hasContactInfo = data.is_anon ? data.anon_contact_info : true;
+
+	window.parent.postMessage({'token':data.token,'TokyUsername':Config.handle}, '*');	
+	createCookie('toky-token-local', data.token, 1/12);
+
+	//
+	
+	if (!_tokyReady) {
+		_tokyReady = true;
+		getCompanyInfo(_data.companyID).done( function (data) {
+			
+	        if (!data.success) {
+				console.error(data.message);
+				return;
+	        }
+
+			if (data.company.widget_label_hide) $('.copyright').hide();
+			
+	        if (data.company.pic_url)
+				_ui.companyLogo.attr("src", data.company.pic_url);
+
+			if (data.company.show_country) {
+				_ui.country.html('<i class="flag flag-' + data.company.country.toLowerCase() + '"></i> ' +  data.company.country.toUpperCase());
+			} else {
+				_ui.country.html('<i class="icon icon-globe gray-2"></i> '+trans('global'));	
+			}
+	        
+
+			var social = '', 
+				company = data.company;
+		
+			for(var name in company) {
+				eval('if("'+name+'".match(/(domain|profile_url)$/)) { '+
+						'if(company.'+name+'==null) company.'+name+'="";'+
+					 '}'
+				);
+			}
+			if (company.domain.length>0)
+				social += '<a href="'+company.domain+'" class="social social-web" target="_blank"></a>';
+
+			if (company.tw_profile_url.length>0) 
+				social += '<a href="'+company.tw_profile_url+'" class="social social-tw" target="_blank"></a>';
+
+			if (company.fb_profile_url.length>0) 
+				social += '<a href="'+company.fb_profile_url+'" class="social social-fb" target="_blank"></a>';
+
+			itemDescription((social!=''));
+			_ui.social.html(social);	
+		
+			if (_ui.bubble.length>0) {
+				
+				_ui.bubble.find('a.close').click(function(){					
+					_ui.bubble.animate({opacity:0}, 300, function(){
+						hideBubble(true);		
+					});
+					return false;
+				});
+				
+				$.post('/widgets/online_agent', {'company_id' : Config.company_id}, 
+				function(json){
+					if (!json.error) {
+						if (json.data.pic_url==null) json.data.pic_url = '';
+						if (json.data.pic_url!='' && !json.data.pic_url.match(/(nopic)/))
+							_ui.bubble.find('img').attr('src', json.data.pic_url);
+						
+						_ui.bubble.find('span.agent-name').html('&mdash; '+json.data.fullname+' - '+Config.companyName);
+						
+						widgetAnimation(true);
+						
+					} else {
+						widgetAnimation(false);
+					}
+				}, 'json');
+			} else {
+				widgetAnimation(false);
+			}
+		
+			
+			if (_ui.inCallBtn.length==0) {
+				hideCallView(true);
+				_ui.inCallBtn.show();	
+			} else {
+				_ui.inCallBtn.click( function() {
+
+					// if ( _config.isMobile ) {
+					// 	_ui.keepAwakeVideo.prop('muted', true);
+					// 	_ui.keepAwakeVideo.hide();
+					// 	_ui.keepAwakeVideo.get(0).play();
+
+					// 	console.log("Played Keep-Awake video");
+					// }
+					
+					connectToToky();
+
+					if (Config.oneCall) beforeStartCall();
+					hideCallView(false);						
+				});							
+			}
+		
+	    });
+
+		selectBuildSection();
+
+		updateCompanyAttentionStatus();
+	}
+}
+
+function widgetAnimation(bubble) {
+	window.parent.postMessage({'tokyReady':true,'TokyUsername':Config.handle}, '*');	
+	if (_ui.inCallBtn.length==0) return;
+
+	var timer = bubble ? 5000 : 15000;
+
+	setTimeout(function(){
+		_ui.inCallBtn.fadeIn();	
+		setTimeout(function(){
+			if (_ui.inCallBtn.get(0).style.display!='none') {
+				if (bubble) {
+					hideBubble(false);
+					_ui.bubble.addClass('active');
+				} else {
+					_ui.inCallBtn.removeClass('animated').addClass('animatedOut');
+					setTimeout(function(){
+						_ui.inCallBtn.removeClass('animatedOut').addClass('animated');	
+					},2000);					
+				}	
+			}
+		},timer);
+		
+	});	
+}
+
+function hideBubble(hide) {
+	if (_ui.inCallBtn.length==0) hide = false;
+
+	if (hide) {
+		window.parent.postMessage({'hideCallView':hide,'TokyUsername':Config.handle}, '*');						
+	} else {
+		window.parent.postMessage({'hideCallView':hide,'show_bubble':1,'TokyUsername':Config.handle}, '*');						
+	}
+	
+}
+
+function itemDescription(social) {
+
+	_ui.itemDesc.removeClass('cols-alt');	
+
+	if (social) {			
+		_ui.daysDiv.attr('class'		,'cols f-days col-lg-4 col-md-4 col-sm-4 col-xs-6');
+		_ui.scheduleDiv.attr('class'	,'cols f-hour col-lg-3 col-md-3 col-sm-3 col-xs-6');
+		_ui.countryDiv.attr('class'		,'cols f-country col-lg-2 col-md-2 col-sm-2 col-xs-6');		
+		_ui.socialDiv.show();		
+	} 
+	else {			
+		_ui.itemDesc.addClass('cols-alt');	
+		_ui.daysDiv.attr('class'		,'cols f-days col-lg-4 col-md-4 col-sm-4 col-xs-6');
+		_ui.scheduleDiv.attr('class'	,'cols f-hour col-lg-4 col-md-4 col-sm-4 col-xs-6');
+		_ui.countryDiv.attr('class'		,'cols f-country col-lg-4 col-md-4 col-sm-4 col-xs-12');		
+		_ui.socialDiv.hide();
+	}
+}
+
+var showRequestData = false;
+var completeFilters = false;
+
+function updateCompanyAttentionStatus() {
+
+	getFilters(_data.companyID).done(function(data) {
+		
+		try {
+			if (!data.success)
+				throw new Error(data.message);
+			
+			var isOpen = true;
+			
+			isOpen = isOpen && data.filters.day && data.filters.day.match;
+
+			isOpen = isOpen && data.filters.time && data.filters.time.match;
+
+			if (data.filters.location !== undefined) 
+				isOpen = isOpen && (data.filters.location.country == Config.country);
+
+			showRequestData = (!_data.customer.hasContactInfo && !isOpen) ? true : false;
+			if(showRequestData) _data.requestData = showRequestData;				
+			
+			completeFilters = true;
+				
+		
+			_errorMsg1 = '';			
+			_errorMsg2 = '';
+			_errorType = 0;
+			
+			if (data.filters.day.match !== undefined &&  !data.filters.day.match) {				
+				var d = new Date();
+				_errorMsg1 = trans('er', 'company_error_2').replace('<day>', transArray('days_array')[d.getDay()] + 's');				
+				_errorType = 1;
+			}
+			else if (data.filters.time.match !== undefined && !data.filters.time.match) {
+				var hours = data.filters.time.range.split(" - ");
+				_errorMsg1 = trans('er', 'company_error_1').replace('<hour>', hours[0] );
+				_errorType = 2;
+			}
+			if (_errorMsg1!='') _errorMsg2 = '<h4>'+_errorMsg1.replace('.','</h4><p>')+'</p>';
+						
+			if (isOpen) 
+				_ui.openingStatus.attr('class', 'online').attr('title', trans('open'));
+			else
+				_ui.openingStatus.attr('class', 'offline').attr('title', trans('closed'));
+
+			_ui.days.html(data.filters.day.str);
+			_ui.schedule.html(data.filters.time.range);
+
+			_ui.filterMsgError.each(function(i) {
+				this.innerHTML = (i==0) ? _errorMsg1 : _errorMsg2;
+			});
+						
+		}
+		catch(e) {
+			console.error(e);
+			_ui.schedule.html(null);
+			_ui.country.html(null);
+			_ui.openingStatus.html(null);
+			//Raven.captureException(e);
+		}
+	});
+}
+
+function onWindowUnload() {
+	try {
+		if (_ua)
+			_ua.unregister();
+	}
+	catch (e) {
+		// ignore
+	}
+}
+
+function onRegistered() {
+	if (_config.loaded) {
+		_ui.call.prop("disabled", false);
+		_ui.call.removeAttr("disabled");
+		return;
+	}
+
+	if (!completeFilters) {
+       setTimeout(function(){onRegistered();}, 1000);
+       return;
+    }
+
+	_ui.call.removeAttr("disabled");
+	_ui.call.attr('class', 'btn btn-block btn-lg btn-success');
+	_ui.call.html('<i class="cta-talkie"></i>' + trans('widget_call'));
+
+	if (_data.callNow) {
+		_data.callNow = false;
+		beforeStartCall();
+	}
+}
+var startCallOk = false;
+
+function beforeStartCall() {
+	if ( _data.requestData && !_data.customer.hasContactInfo && _data.clientData.name==undefined) {
+		_data.clientData = {};
+		_ui.linkProfilePic.hide();
+		_ui.modalMessage.addClass('callnow').find('.alert').html(trans('request_client_data'));
+		_ui.modalMessage.find('[type="submit"]').attr('class', 'btn btn-success btn-block').html(trans('call'));
+		_ui.modalMessage.modal('show');
+		
+	} else {
+		if ( _config.isMobile ) {
+			play(_ui.audio.ringing);
+
+			setTimeout(function() {
+				if ( !_config.callAnswered )
+					play(_ui.audio.ringing, true);
+			}, 500);
+		}
+
+		startCall();
+	}
+}
+
+function startCall(localConstraints) {
+
+	if ( !localConstraints ) {
+		if ( !Device.getAll(null , function(selectedDevice, devices) {
+			var constraints = { deviceId: selectedDevice.input } ;
+			var defaultDevice = Device.getDefault();
+
+			if ( !constraints )
+				constraints = true;
+
+			if ( selectedDevice.output )
+				Device.attachToDevice(_ui.video.get(0), selectedDevice.output);
+
+			return startCall(constraints);
+			
+		}) )
+			console.error("Couldn't get devices");
+		else {
+			// getting devices
+			return;
+		}
+	}
+	
+	_ui.linkProfilePic.show();
+	
+	if (!startCallOk) {
+		window.parent.postMessage({'startCall':true,'TokyUsername':Config.handle}, '*');	
+		return;		
+	}
+
+	startCallOk = false;
+	
+	if (!_ua.isRegistered()) {
+		console.error("UA not registered");
+		_data.callNow = true;
+		_ua.register();
+		return;
+	}
+	
+	closeBtnShow(false);
+
+	hideGeneralError();	
+
+	updateCompanyAttentionStatus();	
+
+	if (_data.isPopup)
+		window.resizeTo(400, 750);
+
+	if (_data.authRequired && _data.customer.isAnon) {
+		closeBtnShow(true);
+		showPopup("http://app.toky.co/widgets/login",'toky');		
+		return;
+	}
+
+	_config.data.audioSecured = false;
+	_config.callAnswered = false;
+	_config.callFailed = false;
+	_config.callCancelled = false;
+	_config.data.startTime = undefined;
+	_config.data.endTime = undefined;
+	_data.callReferred = false;
+	_data.greetingRefer = false;
+	_config.rateCount = 0;
+	_data.ringingTimer = null;
+
+	activateConnectingUI();
+
+	_ui.incall.hangupRetry.unbind();
+	_ui.incall.hangupRetry.on('click', hangupOnClick);
+
+	var requestUri = _config.buildRequestUri("service", _data.companyID, _data.sectionID, _data.optionID);
+
+	if (_data.session && (_data.session.startTime && !_data.session.endTime)) {
+		console.error("WTF! call already going. Cancelling this one")
+		alert("You already have a call going");
+		return;
+	}
+	
+	// _data.userTrack = _data.userTrack!='' ? _data.userTrack : '';
+
+	var sipExtraHeaders = [ 'X-Connection-Country: ' + _data.customer.country,
+							'X-Referer: ' + _data.customer.referer,
+							'X-Lang: ' + _config.defaultLang,
+							// 'X-User-Track: ' + _data.userTrack
+						  ];
+
+	if (_data.callExtraInfo)
+		sipExtraHeaders.push('X-Extra-Info: ' + _data.callExtraInfo);
+
+	if ( _data.customer.hasContactInfo ) 
+		sipExtraHeaders.push('X-Has-Info: yes');
+	else if ( _data.clientData !== undefined ) {
+
+		if ( _data.clientData.name )
+			sipExtraHeaders.push('X-Info-Name: ' + _data.clientData.name);
+
+		if ( _data.clientData.email )
+			sipExtraHeaders.push('X-Info-Email: ' + _data.clientData.email);
+
+		if ( _data.clientData.phone )
+			sipExtraHeaders.push('X-Info-Phone: ' + _data.clientData.phone);
+
+	}
+
+	_data.session = _ua.invite(requestUri, {
+		media: {
+			constraints : { audio: (localConstraints ? localConstraints : true),
+						  	video: false }
+		},
+		extraHeaders: sipExtraHeaders,
+		authorizationUser : _config.data.sip.username,
+		password : _config.data.sip.password
+	});
+
+	setupSession(_data.session);
+}
+
+function setupSession(session) {
+	session.on('refer', onRefer);
+
+	session.on('progress', function () { 	
+		cancelTimer(_data.connectingTimer);
+
+		if (_data.ringingTimer)
+			return;
+
+		_ui.incall.callStatus.html(trans('ringing') + '...');
+
+		_data.ringingTimer = setTimeout( function () {
+			
+			if ( _config.callAnswered )
+				return;
+
+			_ui.incall.callStatus.html(trans('still_ringing') + '...');
+
+		}, _config.ringing_wait_time);
+	});
+
+	session.on('accepted', onCallAccepted);
+	session.on('cancel', onCallCancelled);
+	session.on('bye', onBye);
+	session.on('muted', function() {
+		_ui.incall.muteLegend.html(trans('unmute'));
+	});
+	session.on('unmuted', function() {
+		_ui.incall.muteLegend.html(trans('mute'));
+	});
+	session.on('cancel', onSessionCancel);
+	session.on('failed', onSessionFailed);
+	session.mediaHandler.on('userMediaRequest', function() {
+		_ui.incall.hangupRetry.attr("disabled", "disabled");
+
+		setTimeout( function (e) {
+				if (_data.mediaAcquired) {
+					_data.mediaAcquired = false;
+					return;
+				}
+
+				stop(_ui.audio.ringing);
+				_ui.requestMic = bowser.firefox ? "firefox" : "chrome";
+				window.parent.postMessage({'browser':_ui.requestMic,'showMic':true,'text_mic': trans('enable_mic'),'TokyUsername' : Config.handle}, '*');	
+		}, 1500);
+	});
+
+	session.mediaHandler.on('userMedia', function() {
+		_data.mediaAcquired = true;
+
+		play(_ui.audio.ringing, true);
+
+		_ui.incall.hangupRetry.removeAttr("disabled");
+
+		window.parent.postMessage({'browser':_ui.requestMic,'showMic':false,'TokyUsername':Config.handle}, '*');	
+	});
+
+	session.mediaHandler.on('userMediaFailed', function() {
+		Raven.captureMessage('userMediaFailed');
+		console.log("Get user media FAILED");
+		try {
+			stop(_ui.audio.ringing);
+			play(_ui.audio.error, false);
+		}
+		catch(e) {
+			console.error(e);
+			//Raven.captureException(e);
+		}
+
+		alert(trans('er', 'mic_disabled'));
+	});
+
+	session.mediaHandler.on('iceFailed', function() {
+		Raven.captureMessage('iceFailed');
+
+		alert("We couldn't connect your call because we couldn't retrive your audio settings. Please contact us at support@toky.co for help.");
+
+		play(_ui.audio.error);
+		if (_data.session)
+			_data.session.bye();
+	});
+}
+
+function onRefer(request, localConstraints) {	
+	_data.callReferred = true;
+	//_ui.incall.agent.html("");
+	if (!request.getHeader('Refer-To')) {
+		console.error("No Refer-To hdr");
+		_data.session.bye();
+		return;
+	}
+
+	if ( !localConstraints ) {
+		if ( !Device.getAll(null , function(selectedDevice, devices) {
+			var constraints = { deviceId: selectedDevice.input } ;
+			var defaultDevice = Device.getDefault();
+
+			if ( !constraints )
+				constraints = true;
+
+			if ( selectedDevice.output )
+				Device.attachToDevice(_ui.video.get(0), selectedDevice.output);
+
+			return onRefer(request, constraints);
+			
+		}) )
+			console.error("Couldn't get devices");
+		else {
+			// getting devices
+			return;
+		}
+	}
+
+	_data.session.bye();
+
+	var newTarget = request.getHeader('Refer-To').replace("<", "").replace(">", ""); // bug in library doesn't parse well a valid URI
+	
+	_data.greetingRefer = newTarget.indexOf("service") > -1;
+
+	if ( !_data.greetingRefer )
+		_ui.tempStatus.html(trans('transfering'));
+
+	var sipExtraHeaders = [
+							'X-Connection-Country: ' + _data.customer.country,
+							'X-Referer: ' + _data.customer.referer,
+							'X-Lang: ' + _config.actualLang,
+							'Referred-By: ' + request.getHeader('Referred-By')
+						];
+
+	if ( _data.customer.hasContactInfo ) 
+		sipExtraHeaders.push('X-Has-Info: yes');
+	else if ( _data.clientData !== undefined ) {
+
+		if ( _data.clientData.name )
+			sipExtraHeaders.push('X-Info-Name: ' + _data.clientData.name);
+
+		if ( _data.clientData.email )
+			sipExtraHeaders.push('X-Info-Email: ' + _data.clientData.email);
+
+		if ( _data.clientData.phone )
+			sipExtraHeaders.push('X-Info-Phone: ' + _data.clientData.phone);
+	}
+
+	var refSession = _ua.invite(newTarget, {
+						media : {
+							constraints : { audio : (localConstraints ? localConstraints : true),
+											video : false }
+						},
+						extraHeaders: sipExtraHeaders,
+						authorizationUser : _config.data.sip.username,
+						password : _config.data.sip.password
+					});
+
+	_data.session = refSession;
+	_data.callReferred = false;
+	setupSession(refSession);
+	
+}
+
+function onCallCancelled (sipMessage) {
+	_data.cancelledSession = _data.session;
+	_data.session = null;
+	stop(_ui.audio.ringing);
+	cancelTimer(_data.connectingTimer);
+}
+
+function onCallAccepted (sipMessage) {
+	
+	cancelTimer(_data.connectingTimer);
+
+	if (_config.callCancelled) {
+		console.warn("this call was cancelled");
+		
+		if ( _data.cancelledSession )
+			_data.cancelledSession.bye();
+
+		return;
+	}
+
+	this.mediaHandler.getRemoteStreams().forEach(
+		//attachMediaStream.bind(null, new Audio())
+		attachMediaStream.bind(null, _ui.video.get(0))
+	);
+	
+	_ui.incall.description.html(null);
+
+ 	disableDialpad();
+ 	showDialpadIfNecessary(sipMessage);
+
+    if (sipMessage.getHeader('X-Agent'))
+		getAgentInfo(sipMessage.getHeader('X-Agent')).done(onAgentRetrieved); 
+
+	_config.callAnswered = true;
+
+	activateConnectedUI();
+	
+	Stats.startMonitoring(this.mediaHandler.peerConnection, onStatsUpdated, null);
+}
+
+function onStatsUpdated(e) {
+
+	if ( e.lastRead ) 
+		return;
+
+	if ( !_config.callAnswered ) {
+		Stats.stopMonitoring();
+		return;
+	}
+
+	// console.log("stats updated");
+	// console.log(e);
+
+	if ( e.localNoAudio && !isGeneralMessageShowing() ) {
+		showGeneralMessage(trans('local_no_audio'), 'warning', 8000);
+
+		// if ( !_data.isOutbound )
+		// 	setTimeout(function() { transfer(_config.data.sip.username); }, 2000);
+	}
+	else if ( !e.localNoAudio ) {
+		hideGeneralMessage(trans('local_no_audio'));
+
+		if ( e.remoteNoAudio && !isGeneralMessageShowing() )
+			showGeneralMessage(trans('remote_no_audio'), 'warning', 8000);
+		else if ( !e.remoteNoAudio )
+			hideGeneralMessage(trans('remote_no_audio'));			
+	}
+
+	if ( e.rttScore <= 3 && !isGeneralMessageShowing() )
+		showGeneralMessage(trans('high_latency'), 'warning', 8000);
+	else if ( e.rttScore > 3 )
+		hideGeneralMessage(trans('high_latency'));
+
+	if ( e.outboundLoss >= 10 && !isGeneralMessageShowing() )
+		showGeneralMessage(trans('high_packet_loss_outbound'), 'warning', 8000);
+	else if ( e.outboundLoss < 10 )
+		hideGeneralMessage(trans('high_packet_loss_outbound'));		
+	
+	if ( e.inboundLoss >= 10 && !isGeneralMessageShowing() )
+		showGeneralMessage(trans('high_packet_loss_inbound'), 'warning', 8000);
+	else if ( e.inboundLoss < 10 )
+		hideGeneralMessage(trans('high_packet_loss_inbound'));
+
+}
+
+function showDialpadIfNecessary(sipMessage) {
+	if (!sipMessage)
+		return;
+	
+	if (!sipMessage.getHeader('User-Agent') || sipMessage.getHeader('User-Agent').indexOf("B2BUA") < 0)
+		return;
+
+	var remoteParty = sipMessage.getHeader('Remote-Party-ID');
+
+        if (!remoteParty)
+                remoteParty = sipMessage.getHeader('P-Asserted-Identity');
+
+	if (!remoteParty)
+		return;
+	
+	remoteParty = remoteParty.match(/<(sip:.+)>/);
+
+	if (!remoteParty)
+		return;
+
+	var uri = SIP.URI.parse(remoteParty[1]);
+
+	if (!uri || !uri.user)
+		return;
+
+	var isNumber = uri.user.match(/^\+{0,1}[0-9]+$/);
+
+	if (!isNumber)
+		return;
+
+	enableDialpad("");
+}
+
+var time = Date.now || function() {
+  return +new Date;
+};
+
+function onAgentRetrieved(data) {
+	_voicemailTimer = 0;
+	try {
+		if (!data.success)
+			throw new Error("Error retrieving agent's info");
+		
+		var pic = !data.agent.pic_url ? '/resources/images/nopic.png' : data.agent.pic_url;
+
+		_ui.agent.pic.attr("src", pic);
+		_ui.agent.name.html(data.agent.name);
+
+		if (data.agent.name !== trans('voicemail') && 
+			data.agent.name !== trans('call_queued') ) { // do not show the message button when voicemail is active
+			_ui.incall.message.attr("href", "mailto:" + data.agent.email);
+			_ui.incall.message.removeClass("disable");
+		}
+
+		showAgent(true);
+
+		if ( data.agent.name === trans('voicemail') ) {
+			showGeneralMessage(trans('voicemail_data'));
+			_voicemailTimer = time();
+		}
+			
+
+		_data.agent = data.agent;
+
+		// console.log(data);
+
+//			_ui.incall.agent.html(data.agent.name);
+		//_ui.incall.description.html(data.agent.desc);
+		//_ui.incall.profilePic.attr("src", data.agent.pic);
+	}
+	catch(err) {
+		console.error(err);
+		//Raven.captureException(e);
+		//_ui.incall.agent.html("---");
+		//_ui.incall.description.html("");
+	}
+}
+
+function onRegisterError() {
+	console.log("%c 🌎 Accepting web calls via toky.co 📞", "background: white; color: blue;");
+
+	_ui.call.attr("disabled", "disabled");
+	_ui.call.attr('class', 'btn btn-block btn-lg btn-success');
+	_ui.call.html('<i class="cta-talkie"></i>' + trans('registering'));
+
+	cancelTimer(_data.loadingTimer);
+	cancelTimer(_data.reallyLoadingTimer);
+
+	_config.loaded = false;
+}
+
+function onBye() {
+
+	closeBtnShow(true);	
+	
+	if (_data.callReferred) {
+		console.log("call refered");
+		return;
+	}
+
+	_config.callAnswered = false;
+	
+	_config.data.startTime = _data.session ? _data.session.startTime : new Date();
+	_config.data.endTime = new Date();
+	_data.session = null;
+
+	_ui.incall.callStatus.html(trans('call_ended'));
+
+	hideGeneralMessage();
+	activateCallEndedUI();
+		
+	if (_config.callFailed)
+		return;
+	
+	activateCallEndedUI();
+
+	_ui.incall.callStatus.html(trans('call_ended'));
+	
+	
+}
+
+function onSessionFailed(response, cause) {
+	try {
+		
+		if (_config.callCancelled)
+			return;
+
+		if (_data.callReferred) {
+			console.log("call refered");
+			return;
+		}
+
+		cancelTimer(_data.connectingTimer);
+
+		// console.log(response);
+		// console.log(cause);
+		_data.session = null;
+		_config.callAnswered = false;
+
+		stop(_ui.audio.ringing);
+
+		if (!response)
+			return;
+		
+		play(_ui.audio.error);
+
+		activateCallFailed();
+
+		_ui.incall.hangupRetry.unbind();
+		_ui.incall.hangupRetry.on('click', function(data) {
+			startCall();
+		});
+
+		_ui.incall.errorAlert.hide();
+		hideGeneralError();
+
+		var errorCode = response ? response.getHeader('X-Error-Code') : undefined;
+		if (errorCode === undefined)
+			errorCode = response ? response.status_code : undefined;
+
+		if (errorCode !== undefined) {
+			
+			if ( errorCode <= -100) { // filters
+				// _ui.incall.errorAlert.hide();
+				// _ui.incall.description.html(null);
+				// _ui.incall.errorSection.hide();
+				showErrorMessage(true);
+			}
+			else
+				getErrorTranslation(errorCode).done( function (data) {
+					if (!data.success)
+						return;
+
+					showGeneralMessage(data.description);
+
+					// _ui.incall.description.html(data.description);
+					// _ui.incall.errorAlert.show();
+					// _ui.errorSection.fadeIn();
+				});
+		}
+
+		// _ui.incall.callStatus.html("Ooops");
+
+		activateCallFailed();
+		// _ui.incall.reasonPhrase.html(response.reason_phrase);
+
+		if (response && response.status_code >= 500) {
+			// display server error message
+			console.log("server error");
+			return;
+		}
+	}
+	catch(e) {
+		console.error(e);
+		activateDisconnectedUI();
+		//Raven.captureException(e);
+	}
+	finally {
+		_config.callAnswered = false;
+	}
+}
+
+function onSessionCancel() {
+	_data.session = null;
+	_config.callAnswered = false;
+
+	activateDisconnectedUI();
+}
+
+function getParameters() {
+    return $.ajax({
+		url: 	"/widgets/params/" + Config.token + '/callme',
+		data : { 'company_id' : _data.companyID },
+		type: 	"POST",
+    });
+}
+
+function getAgentInfo(agent) {
+
+	_ui.agent.pic.attr("src", "/resources/images/nopic.png");
+	_ui.agent.name.html("");
+
+	if (!agent) {
+		console.warn("No agent info on this call");
+		return;
+	}
+
+	if (agent === 'voicemail') {
+		var dfd = $.Deferred();
+		
+		return dfd.resolve( { success : true, 
+							  agent : {
+							  			name : trans('voicemail'),
+							  			pic_url : 'https://s3.amazonaws.com/tokystorage/agent-pic/voicemail.png',
+							  			desc : trans('hangup_when_done')
+							  } } );
+	}
+	else if (agent === 'service') {
+		var dfd = $.Deferred();
+		
+		return dfd.resolve( { success : true, 
+							  agent : {
+							  			name : trans('call_queued'),
+							  			pic_url : 'https://s3.amazonaws.com/tokystorage/agent-pic/queue-ico.png',
+							  			desc : trans('hangup_when_done')
+							  } } );
+	}
+	
+  	return $.ajax({
+		url: "/agent/info/",
+		type: "POST",
+		data: { "agent" : agent }
+    });
+    
+}
+
+function getErrorTranslation(code) {
+	return $.ajax({
+		url: "/settings/translation/",
+		type: "POST",
+		data: { "code" : code }
+    });
+}
+
+
+function attachMediaStream (element, stream) {
+	if (typeof element.src !== 'undefined') {
+		URL.revokeObjectURL(element.src);
+		element.src = URL.createObjectURL(stream);
+	} 
+	else if (typeof element.srcObject !== 'undefined'
+			|| typeof element.mozSrcObject !== 'undefined') {
+		element.srcObject = element.mozSrcObject = stream;
+	} 
+	else {
+		console.log('Error attaching stream to element.');
+		return false;
+	}
+
+	ensureMediaPlaying(element);
+	return true;
+}
+
+function ensureMediaPlaying (mediaElement) {
+	var interval = 100;	
+	mediaElement.ensurePlayingIntervalId = setInterval(function () {
+		if (mediaElement.paused) {
+			mediaElement.play()
+		}
+		else {
+			clearInterval(mediaElement.ensurePlayingIntervalId);
+		}
+	}, interval);
+}
+
+function showInCall() {
+	_ui.inCallSection.attr("class", "active");
+}
+
+function hideInCall() {
+	
+	closeBtnShow(true);
+	_ui.call.show();
+	_ui.inCallSection.removeAttr("class");
+
+	showAgent(false);
+
+	_ui.incall.timer.timer('reset');
+	_ui.incall.timer.timer('pause');
+}
+
+function activateConnectingUI() {
+	_ui.incall.hangupRetry.attr("disabled", "disabled");
+	_ui.incall.mute.attr("class", "disable");
+
+	_ui.incall.hangupRetry.attr("class", "btn btn-lg btn-danger btn-block btn-hangup");
+	_ui.incall.hangupRetry.html(trans('hangup'));	
+
+	disableDialpad();
+
+	_ui.callRatingLabel.html(trans('rate_call'));
+
+	if (typeof(_ui.callRating.raty) == "function") {
+		_ui.callRating.show();
+		_ui.callRating.raty('reload');
+	}
+
+	_ui.incall.callStatus.show();
+	_ui.incall.callStatus.html(trans('connecting'));
+	_config.data.connectingTimer = setTimeout( function () {
+		if (_data.ringingTimer)
+			return;
+
+		_ui.incall.callStatus.html(trans('still_connecting'));
+	}, 8000);
+
+	_ui.incall.description.html("");
+
+	_ui.incall.message.addClass("disable");
+	// _ui.incall.reasonPhrase.html("");
+
+	_ui.call.hide();
+
+	showInCall();
+}
+
+
+function activateConnectedUI() {
+	stop(_ui.audio.ringing);
+
+	_ui.incall.hangupRetry.removeAttr("disabled");
+	_ui.incall.mute.removeAttr("class");
+
+	_ui.incall.callStatus.html(trans('connected'));
+
+	try {
+		_ui.incall.timer.timer('start');
+		_ui.incall.timer.attr("class", "timer active"); // show timer
+	}
+	catch(e) {
+		console.error(e);
+		//Raven.captureException(e);
+	}
+
+	_ui.incall.callStatus.html('<i class="fa fa-lock"></i> ' + trans('audio_secured'));
+
+	showInCall();
+
+	setTimeout( function (e) { _ui.incall.callStatus.html(trans('connected')); }, 1500);
+	setTimeout( function (e) { _ui.incall.callStatus.fadeOut(); }, 3000);
+}
+
+function activateCallEndedUI() {
+	// make sure it stopped for 1 second calls
+	stop(_ui.audio.ringing);
+
+	hideGeneralMessage();
+
+	_ui.tempStatus.html(null);
+
+	_ui.incall.hangupRetry.prop("disabled", true);
+	_ui.incall.mute.prop("disabled", true);
+	// _ui.incall.hold.prop("disabled", true);
+
+	activateDisconnectedUI();
+	
+	if (_data.isPopup)
+		window.resizeTo(400, 500);
+
+	hideInCall();
+	//_ui.incall.closeModal.show();
+}
+
+function activateCallFailed() {
+	closeBtnShow(true);
+	_ui.incall.mute.attr("class", "disabled");
+
+	_ui.incall.hangupRetry.attr("class", "btn btn-block btn-lg btn-success btn-hangup");
+	_ui.incall.hangupRetry.html(trans('retry'));
+
+	_ui.incall.timer.attr("class", "timer"); // hide
+
+	_ui.inCallSection.attr("class", "error");
+	
+	_ui.tokyClose.show();
+}
+
+function activateDisconnectedUI() {
+	//_ui.incall.modal.modal('hide');
+	hideInCall();
+
+	_ui.incall.timer.attr('class', 'timer');
+
+	if ( _config.isMobile ) {
+		_ui.keepAwakeVideo.get(0).pause();
+	}
+}
+
+function hangupOnClick() {
+	
+	setTimeout(function(){
+		if (((time()-_voicemailTimer)/1000)>8 && _data.customer.isAnon && _voicemailTimer>0) {			
+			_ui.modalMessage.removeClass('callnow').find('.alert').html('<strong>'+trans('thanks_for_calling')+'</strong><br>'+trans('caller_info_message'));
+			_ui.modalMessage.find('[type="submit"]').attr('class', 'btn btn-primary btn-block').html(trans('send'));
+
+			
+			if (_data.clientData.name==undefined && !_data.customer.hasContactInfo) {
+				_ui.modalMessage.modal({backdrop:'static',keyboard:false, show:true}).show();			
+			} else {
+				if (_data.customer.hasContactInfo) {
+					if (_data.customer.hasContactInfo && _data.clientData.name==undefined) {			
+						_ui.modalMessage.find('input[name="fullname"]').val(_data.customer.id);
+						_ui.modalMessage.find('input[name="email"]').val('cookie@to.ky');
+					}				
+				}
+				_ui.modalMessage.find('form').submit();
+			}
+						
+		} else{			
+			hideCallView(true);				
+		}
+		_voicemailTimer = 0;
+	}, 1000);
+		
+	if (!_data.session)
+		return;
+
+	if (_data.session.startTime === null) {
+		_config.callCancelled = true;
+		_data.session.cancel();
+		return;
+	}
+
+	_data.session.bye();
+
+	hideGeneralMessage();	
+}
+
+function muteOnClick() {
+	if (!_data.session)
+		return;
+
+	if (_ui.incall.mute.attr("toky-state") === "unmuted") {
+		_ui.incall.mute.attr("toky-state", "muted");
+		_ui.incall.mute.attr("class", "active"); // mute active
+		_data.session.mute();
+		return;
+	}
+
+	_ui.incall.mute.attr("toky-state", "unmuted");
+	_ui.incall.mute.removeAttr("class");
+	_data.session.unmute();
+}
+
+
+function holdOnClick() {
+//	_session.();
+}
+
+function play(audio, repeat) {
+	audio.trigger("load");
+	audio.trigger("play");
+}
+
+function stop(audio) {
+	//audio.pause();
+	//audio.currentTime = 0;
+	audio.trigger("pause");
+}
+
+function getFilters(companyID) {
+	return $.ajax({
+		url: "/company/filters/",
+		type: "POST",
+		data: { "company_id" : companyID }
+    });
+}
+
+function getOptions(companyID) {
+	return $.ajax({
+		url: "/company/options/",
+		type: "POST",
+		data: { "company_id" : companyID }
+    });
+}
+
+
+function getCompanyInfo(companyID) {
+	return $.ajax({
+		url: "/company/info/?company_id=" + companyID,
+		type: "GET"
+    });
+}
+
+function setupHookForUnload() {
+	var myEvent = window.attachEvent || window.addEventListener;
+	var chkevent = window.attachEvent ? 'onbeforeunload' : 'beforeunload'; /// make IE7, IE8 compitable
+
+	myEvent(chkevent, function(e) { // For >=IE7, Chrome, Firefox
+		if (!_config.callAnswered)
+			return;
+
+		var confirmationMessage = trans('call_will_end').replace('<name>', _data.agent.name);
+
+		(e || window.event).returnValue = confirmationMessage;
+		return confirmationMessage;
+	});            
+}
+
+function isBrowserCapable() {
+	try { 
+		var browser = null;
+	    
+	    Modernizr.load();
+
+	    var isMacLike = navigator.platform.match(/(Mac|iPhone|iPod|iPad)/i) ? true : false;
+        var isIOS = navigator.platform.match(/(iPhone|iPod|iPad)/i) ? true : false;
+
+        if (isIOS) {
+        	//window.location.replace("/error/unsupported-platform/");
+            return true;
+        }
+
+		if (!Modernizr.audio)
+			throw new Error('No audio supported');
+
+		if (!Modernizr.websockets)
+			throw new Error('No websockets supported');
+
+	    $.browser.chrome = /chrome/.test(navigator.userAgent.toLowerCase());
+	    $.browser.opera = /opr/.test(navigator.userAgent.toLowerCase());
+
+	   	if($.browser.opera)
+	    	browser = "opera";
+	    else if($.browser.chrome)
+	        browser = "chrome";
+	    else if($.browser.mozilla) {
+	    	browser = "firefox";
+            // if (isMacLike)
+                // $("#firefoxAlert").fadeIn();
+        }
+	    else
+	    	throw new Error('your browser is not supported');
+
+		_data.browser_ua = (_config.isMobile ? 'mobile/' : 'desktop/') + browser + '-' + $.browser.versionNumber;
+
+		if (browser == 'chrome' && $.browser.versionNumber < 31)
+			throw new Error('chrome version not supported: ' + $.browser.versionNumber);
+
+		if (browser == 'firefox' && $.browser.versionNumber < 30)
+			throw new Error('firefox version not supported: ' + $.browser.versionNumber);
+
+		if (browser == 'opera' && $.browser.versionNumber < 22)
+			throw new Error('opera version not supported: ' + $.browser.versionNumber);
+
+		return true;
+	}
+	catch(e) {
+		console.error(e);
+		//Raven.captureException(e);
+		return false;
+	}
+}
+
+function loadLangPack() {
+	var supportedLangs = [ 'en', 'es', 'pt', 'fa', 'it', 'sk', 'nl', 'fr'];
+
+	_config.defaultLang = (navigator.language || navigator.systemLanguage || navigator.userLanguage || 'en').substr(0, 2).toLowerCase();
+	_config.actualLang = _config.defaultLang;
+
+	if (supportedLangs.indexOf(_config.defaultLang) < 0)
+		_config.defaultLang = 'en';
+
+	return getLangFiles(_config.defaultLang);
+}
+
+function getLangFiles(lang) {
+	return $.ajax({
+			url: "/resources/lang/" + lang + ".json?v=1",
+			dataType : "text"
+	});
+}
+
+// taken from: http://stackoverflow.com/questions/19491336/get-url-parameter-jquery
+function getUrlParameter(sParam) {
+    var sPageURL = window.location.search.substring(1);
+    var sURLVariables = sPageURL.split('&');
+    for (var i = 0; i < sURLVariables.length; i++) 
+    {
+        var sParameterName = sURLVariables[i].split('=');
+        if (sParameterName[0] == sParam) 
+        {
+            return sParameterName[1];
+        }
+    }
+}  
+
+function cancelTimer(timer) {
+	if (!timer)
+		return;
+
+	clearTimeout(timer);
+	timer = null;
+}
+
+function changeSession(data) {		
+
+	setTimeout(function(){
+		eval('register('+JSON.stringify(data)+');');
+	},100);
+	_data.callNow = true;
+	return;
+}
+
+var newwindow = null;
+function showPopup(url,title) {
+	var w = 300, h = 50;
+	var left = (screen.width/2)-(w/2);
+	var top = (screen.height/2)-(h/2);
+
+	newwindow = window.open(url+'?company_id='+Config.company_id+'&auth='+(_data.authRequired?1:0), title, 'toolbar=no, location=no, directories=no, status=no, menubar=no, scrollbars=no, resizable=no, copyhistory=no, width='+w+', height='+h+', top='+top+', left='+left);
+	if (newwindow==undefined) return false;
+	if (window.focus) {newwindow.focus()}
+	return false;
+}
+
+function callback_form_submit_end(json, form) {
+	if (json.error) return;
+	location.reload();
+}
+
+function isGeneralMessageShowing(msg) {
+	if ( _ui.generalError.hasClass("hide") )
+		return false;
+
+	if ( !msg )
+		return true;
+
+	return _ui.generalError.find("p").html() == msg;
+}
+
+function hideGeneralMessage(msg) {
+
+	if ( !msg || _ui.generalError.find("p").html() == msg )
+		return hideGeneralError();		
+}
+
+function showGeneralMessage(msg) {
+	showErrorMessage(false);
+	_ui.generalError.removeClass('hide').find('p').html(msg);	
+}
+
+function hideGeneralMessage() {
+	return hideGeneralError();
+}
+
+function hideGeneralError() {
+	showErrorMessage(false);
+	_ui.generalError.addClass('hide');	
+}
+
+function showErrorMessage(show) {
+
+	if (_ui.generalError!=undefined)
+		_ui.generalError.addClass('hide');
+	
+	if (_errorType==0) return;
+	
+	
+	var a = ['','days','hour','country'];
+	
+	if (!show) {	
+		// if (_ui.socialDiv.get(0).style.display=='none')
+		// 	_ui.itemDesc.removeClass('cols-alt');
+		
+		for (var i = 0; i < a.length; i++) {
+			_ui.itemDesc.removeClass('alert-'+a[i]);
+		}
+		if (_ui.responsiveError.attr('class').match(/hide/)!=null) return;
+		_ui.responsiveError.addClass('hide');
+		return;
+	}
+	
+	if (_ui.socialDiv.get(0).style.display=='none')
+		_ui.itemDesc.addClass('cols-alt');	
+
+	if (_window.width()<=500) {
+		_ui.responsiveError.removeClass('hide');
+	} else {
+		_ui.itemDesc.addClass('alert-'+a[_errorType]);
+	}
+
+	setTimeout(function(){
+		showErrorMessage(false);
+	}, 16000);	
+}
+
+function selectBuildSection() {
+	if (_selectSection) return;
+	
+	getOptions(_data.companyID).done(function(data){
+		if (!data.success) return;
+		_selectSection = true;
+		
+		_ui.selectSetions.find('.info-seccion');
+		
+		var section = [],
+			options = [];
+		
+		for (var i = 0; i < data.sections.length; i++) {	
+			var hide = data.sections[i].ms_id==_data.sectionID?'class="hide"':'';
+			section.push('<li '+hide+'><a href="#'+data.sections[i].ms_id+'">'+data.sections[i].ms_name+'</a></li>');
+		}
+		
+		if (section.length<=1) _ui.selectSetions.find('.info-seccion ul').hide();
+		
+		_ui.selectSetions.find('.info-seccion ul').html(section.join(''))
+		.find('a').click(function(){
+			$(this).parents('.info-seccion').removeClass('open');
+			_data.sectionID = this.getAttribute('href').replace('#','');
+			_ui.section.html(this.innerHTML);
+			_ui.selectSetions.find('.info-seccion ul li.hide').removeClass('hide');
+			for (var i = 0; i < data.sections.length; i++) {
+				if (data.sections[i].ms_id==_data.sectionID) { 
+					$(this).parents('li').addClass('hide');
+					_data.optionID = data.sections[i].option[0].id;
+					optionBuild(data, _data.sectionID);
+					return false;
+				}
+			}
+			return false;
+		});		
+		
+		optionBuild(data, _data.sectionID);
+	});
+}
+
+function optionBuild(data, id) {
+	var options = [];
+	for (var i = 0; i < data.sections.length; i++) {
+		if (data.sections[i].ms_id==id) {
+			
+			for (var m = 0; m < data.sections[i].option.length; m++) {				
+				var rs = data.sections[i].option[m];
+
+				if (_data.optionID==rs.id) {
+					_ui.option.html(rs.name);
+					_data.requestData = rs.request_data;						
+				}
+
+				if (showRequestData){
+					 _data.requestData = showRequestData;	
+					 rs.request_data = 'Y';
+				}
+
+				var hide = rs.id==_data.optionID?'class="hide"':'';
+				options.push('<li '+hide+'><a href="#'+rs.id+'" request-data="'+(rs.request_data?'Y':'N')+'">'+rs.name+'</a></li>');					
+				
+			}
+
+			var ul = _ui.selectSetions.find('.info-option ul');
+			ul.removeAttr('style','display:none');
+			if (options.length<=1) ul.attr('style','display:none');
+			
+			ul.html(options.join(''))
+			.find('a').click(function(){
+				ul.find('li.hide').removeClass('hide');
+				$(this).parents('.info-option').removeClass('open');
+				$(this).parents('li').addClass('hide');
+				_data.optionID = this.getAttribute('href').replace('#','');
+				_data.requestData = this.getAttribute('request-data')=='Y';
+				if (showRequestData) _data.requestData = showRequestData;
+				_ui.option.html(this.innerHTML);
+				return false;
+			});	;
+			return;
+		}
+	}
+};
+
+function hideCallView(hide) {
+	_ui.bubble.fadeOut();
+	
+	_ui.linkProfilePic.show();
+	
+	if (_ui.inCallBtn.length==0) {
+		_ui.inCallSection.fadeIn();
+		window.parent.postMessage({'hideCallView':hide,'show_bubble':1,'TokyUsername':Config.handle}, '*');						
+		return;
+	}
+	
+	if (hide) {
+		_ui.inCallBtn.attr('class','toky-business-call-button');
+		_ui.inCallSection.fadeOut('fast', function(){			
+			_ui.inCallBtn.fadeIn();			
+			window.parent.postMessage({'hideCallView':hide,'TokyUsername':Config.handle}, '*');						
+		});
+	} else {
+		_ui.inCallBtn.fadeOut('fast', function(){			
+			_ui.inCallSection.fadeIn();								
+		});
+		window.parent.postMessage({'hideCallView':hide,'TokyUsername':Config.handle}, '*');	
+	}
+	
+}
+
+function closeBtnShow(_show) {	
+	if (_show) {
+		_ui.tokyClose.show();		
+	} else {
+		_ui.tokyClose.hide();
+	}	
+	window.parent.postMessage({'callInactive':_show,'TokyUsername':Config.handle}, '*');	
+}
+
+function showAgent(show) {
+	_ui.companyProfile.hide();
+	_ui.companyBio.hide();
+	_ui.agentProfile.hide();	
+		
+	
+    if (show) {
+        _ui.agent.section.addClass('agent-active');    
+		_ui.agentProfile.show();		
+    } else {
+        _ui.agent.section.removeClass('agent-active');    
+		_ui.companyProfile.show();
+		_ui.companyBio.show();
+    }    
+}
+
+window.addEventListener('message', function(event){
+	// console.log(event)
+	if (event.data.startCall!==undefined) {
+		startCallOk = true;
+		_data.userTrack = event.data.data;
+		startCall();
+	}
+
+	if (event.showBubble) {
+		_ui.inCallBtn.trigger('click');
+	}
+});
+
+/******** cookie functions ********/
+var createCookie = function(name, value, days) {
+    var expires;
+    if (days) {
+        var date = new Date();
+        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+        expires = "; expires=" + date.toGMTString();
+    }
+    else {
+        expires = "";
+    }
+    document.cookie = name + "=" + value + expires + "; path=/";
+}
+
+function getCookie(c_name) {
+    if (document.cookie.length > 0) {
+        c_start = document.cookie.indexOf(c_name + "=");
+        if (c_start != -1) {
+            c_start = c_start + c_name.length + 1;
+            c_end = document.cookie.indexOf(";", c_start);
+            if (c_end == -1) {
+                c_end = document.cookie.length;
+            }
+            return unescape(document.cookie.substring(c_start, c_end));
+        }
+    }
+    return "";
+}
+
+function transArray(key) {
+	var result = trans(key);
+	return result === '.' ? [] : result;
+}
+
+function trans(section, key) {
+	if (!key) {
+		key = section;
+		section = 'el';
+	}
+
+	try { 
+		if (_config.lang && _config.lang.hasOwnProperty('t') && _config.lang.t.hasOwnProperty(section) && _config.lang.t[section].hasOwnProperty(key))
+			return _config.lang.t[section][key];
+
+		if (_config.backupLang && _config.backupLang.hasOwnProperty('t') && _config.backupLang.t.hasOwnProperty(section) && _config.backupLang.t[section].hasOwnProperty(key))
+			return _config.backupLang.t[section][key];
+	}
+	catch (e) {
+		console.error(e);
+		//Raven.captureException(e);
+	}
+
+	return '.';
+}
+
+var contactFormLoad = false;
+var contactFormSumbit = false;
+function contactForm() {
+	if (contactFormLoad) return;
+	
+	contactFormLoad = true;
+
+	
+	_ui.modalMessage.find('button.close').click(function(){
+		hideCallView(true);
+		_ui.modalMessage.fadeOut();
+	});
+	
+	_ui.modalMessage.find('form').submit(function(){
+		if (!_data.customer.isAnon) return false;
+		if (contactFormSumbit) return;
+		if (_ui.modalMessage.attr('class').match(/(callnow)/)) {
+			_ui.modalMessage.modal('hide');
+			_data.clientData = {
+				'name'	: _ui.modalMessage.find('input[name="fullname"]').val(),
+				'email'	: _ui.modalMessage.find('input[name="email"]').val(),
+				'phone' : _ui.modalMessage.find('input[name="phone_number"]').val()
+			};
+			startCall();
+			return false;
+		}		
+		
+		contactFormSumbit = true;
+
+		_ui.modalMessage.find('input[name="id"]').val(_data.call_id);	
+		
+		_ui.modalMessage.find('.btn').attr('disabled', 'disabled').html(trans('sending') + '...');
+		
+		$.post('/widgets/save_user_contact', $(this).serialize(), function(json){
+
+			contactFormSumbit = false;
+			_ui.modalMessage.find('.btn').html(trans('thanks'));
+
+			if (json.success) {
+				setTimeout(function(){
+					var el = _ui.modalMessage.find('input[name="phone_number"]');
+
+					hideCallView(true);
+					_ui.modalMessage.find('input[name="fullname"], input[name="email"]').val('');
+				
+					el.val('+'+el.intlTelInput("getSelectedCountryData").dialCode);
+				
+					_ui.modalMessage.fadeOut();
+					_ui.modalMessage.find('.btn').removeAttr('disabled').html(trans('send'));	
+					_data.customer.hasContactInfo = true;
+					_data.clientData = {};
+					
+				},2000);
+			}
+		}, 'json');
+		
+		return false;
+	});
+}
+
+function callback_intlTelInput_valid(el, data) {
+
+	if (data.dialCode==undefined) return;
+
+	_ui.modalMessage.find('input[name="phone_country"]').val(data.iso2.toUpperCase());		
+	_ui.modalMessage.find('input[name="phone_number"]');
+
+}
+
+function callback_intlTelInput_error(obj, data) {
+	if (data.dialCode==undefined) return;
+	
+	if (obj.val()=='') {
+		obj.val('+'+data.dialCode);		
+		return;	
+	}
+}
+
+var phone_num = '';
+function phoneInitialize() {
+	_ui.phone.find('a').click(function(){
+		if(this.className.match(/(disable)/)) return false;
+	});
+	_ui.phone.find('.dropdown-menu').click(function(){
+		return false;
+	});
+	_ui.phone.find('button').click(function(){
+		if(_ui.phone.find('a.dropdown-toggle.disable').lingth>0) return;		
+		phone_num+=this.innerHTML.split('<')[0];
+		_ui.phone.find('li.number').html(phone_num);		
+		var digit = this.innerHTML.split('<')[0];
+
+		processDTMF(digit);
+
+		/* */
+	});
+	disableDialpad();
+}
+
+function disableDialpad() {
+	_ui.incall.message.removeClass("hide");
+	_ui.phone.addClass("hide");
+
+	phone_num = '';
+	_ui.phone.find('.dropup.dial-pad').removeClass('open');
+	_ui.phone.find('a.dropdown-toggle').addClass('disable');	
+}
+
+function enableDialpad(str) {
+
+	_ui.incall.message.addClass("hide");
+	_ui.phone.removeClass("hide");
+
+	phone_num = str;
+	_ui.phone.find('li.number').html(phone_num);
+	_ui.phone.find('a.dropdown-toggle').removeClass('disable');	
+}
+
+function processDTMF(value) {
+	var validKeys = [ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#' ];
+
+	if ( !value || value.length > 1 )
+		return;
+
+	if ( validKeys.indexOf(value) < 0 )
+		return;
+
+	switch (value) {
+		case '0' :
+			play(_ui.audio.dtmf_0);
+			break;
+		case '1' : 
+			play(_ui.audio.dtmf_1);
+			break;
+		case '2' :
+			play(_ui.audio.dtmf_2);
+			break;
+		case '3' :
+			play(_ui.audio.dtmf_3);
+			break;
+		case '4' :
+			play(_ui.audio.dtmf_4);
+			break;
+		case '5' :
+			play(_ui.audio.dtmf_5);
+			break;
+		case '6' :
+			play(_ui.audio.dtmf_6);
+			break;
+		case '7' :
+			play(_ui.audio.dtmf_7);
+			break;
+		case '8' :
+			play(_ui.audio.dtmf_8);
+			break;
+		case '9' :
+			play(_ui.audio.dtmf_9);
+			break;
+		case '*' :
+			play(_ui.audio.dtmf_star);
+			break;
+		case '#' :
+			play(_ui.audio.dtmf_pound);
+			break;
+	}
+
+	var options = {
+		'eventHandlers': {
+			'succeeded': function(e){
+				;// console.warn('DTMF ' + value + ' SUCCESS!');
+			},
+			'failed': function(e){
+				console.error('DTMF ' + value + ' FAILURE!');
+			},
+		},
+	};
+
+    if ( _data.session )
+		_data.session.dtmf(value, options);
+}	
+
+
+var Main = {};
+
+Main = function() {
+	var self = {};
+	
+	self.intlTelInput = function() {
+		$('[intlTelInput="run"]').each(function(){
+			var obj 	 = $(this),
+				delegate = obj.attr('delegate') ? obj.attr('delegate')+'.' : '';
+				
+			obj.attr('intlTelInput', 'prepare');						
+						
+			obj.intlTelInput({
+				autoFormat : true,
+				defaultCountry: "auto"
+			});				
+			var c = Config.country.toLowerCase();
+			if (c=='UK') c = 'GB';
+			obj.intlTelInput("setCountry", c);
+			
+			obj.on("countrychange", function(e, countryData) {
+				var data = obj.intlTelInput("getSelectedCountryData");
+				eval('if (typeof ' + delegate + 'callback_intlTelInput_change == \'function\') {'+
+						delegate + 'callback_intlTelInput_change(obj, data);'+
+				 	 '}');
+			});
+			
+			obj.on("keyup change blur", function(e) {
+
+				if(e.keyCode==37 || e.keyCode==39 || e.keyCode==91 || e.keyCode==16) return true;
+				var data = obj.intlTelInput("getSelectedCountryData");
+
+				var start = this.selectionStart,
+		        end = this.selectionEnd,
+				original = this.value;
+				this.value = this.value.toLowerCase();
+											
+				this.value = this.value.replace(/[^\+|\-|\(|\)|0-9| ]+/gi, '');
+				
+				if ($.trim(obj.val())) {									
+					
+					if (obj.intlTelInput("isValidNumber")) {													
+						
+						if (!this.value.match(/^\+/)) this.value = '+'+data.dialCode+' '+this.value;
+												
+						self.setObjectPhoneFormat(obj, this.value, false);
+						
+						var str = obj.val();
+						if (str.substr(0,end).match(/[ ]+/)!=null) {
+							if (str.length!=original.length) {
+								var i = str.substr(0,end).split(/[^0-9]+/).length-original.substr(0,end).split(/[^0-9]+/).length;
+								start+=i;
+								end+=i;			
+							}													
+						}
+						
+						this.setSelectionRange(start, end);
+						
+						eval('if (typeof ' + delegate + 'callback_intlTelInput_valid == \'function\') {'+
+								delegate + 'callback_intlTelInput_valid(obj, data);'+
+						 	 '}');
+						return false;					
+						
+					} else if (e.keyCode!=8) {						
+						self.setObjectPhoneFormat(obj, this.value, false);
+					}							
+				}			
+
+				var str = obj.val();
+				if (str.substr(0,end).match(/[ ]+/)!=null) {
+					if (str.length!=original.length) {
+						var i = str.substr(0,end).split(/[^0-9]+/).length-original.substr(0,end).split(/[^0-9]+/).length;
+						start+=i;
+						end+=i;			
+					}													
+				}
+				this.setSelectionRange(start, end);					
+
+				eval('if (typeof ' + delegate + 'callback_intlTelInput_error == \'function\') {'+
+						delegate + 'callback_intlTelInput_error(obj, data);'+
+				 	 '}');	
+				
+				return false;
+			});
+			obj.intlTelInput("selectCountry", Config.country.toLowerCase());
+			
+			obj.attr('intlTelInput', 'active');
+			var el = obj.intlTelInput("getSelectedCountryData");
+			obj.intlTelInput("setNumber", '+'+el.dialCode);
+		});	
+
+	};
+	
+	self.setObjectPhoneFormat = function(obj, num) {
+		obj.intlTelInput("setNumber", '+'+num.replace(/[^0-9]+/g, ''));
+		obj.val(obj.intlTelInput("getNumber", intlTelInputUtils.numberFormat.INTERNATIONAL));
+		return obj;
+	};
+	
+	self.phoneFormatElement = null;
+	self.setPhoneFormat = function(str) {
+		if (typeof str == 'object') {
+			console.error('str is not string');
+		}
+
+		if (self.NumberFormatElement==null) {
+			var input = document.createElement("input");
+			self.NumberFormatElement = $(input);
+			self.NumberFormatElement.intlTelInput();
+		}
+		str = str.match(/^\+/) ? str : '+'+str;
+		self.NumberFormatElement.intlTelInput("setNumber", '+'+str.replace(/[^0-9]+/g, ''));
+		self.NumberFormatElement.val(self.NumberFormatElement.intlTelInput("getNumber", intlTelInputUtils.numberFormat.INTERNATIONAL));	
+		if (self.NumberFormatElement.intlTelInput("isValidNumber")) {
+			
+			var el = self.NumberFormatElement.intlTelInput("getSelectedCountryData");
+			return {
+				number : self.NumberFormatElement.val(),
+				extra : el
+			}
+		}
+		return false;
+	};
+	return self; 
+}();
+
+/*
+ initialize
+*/
+var __counter = 0;
+function initialize() {
+	try {
+		if (typeof Main == "undefined" || typeof SIP == "undefined") {		
+			if (__counter>=10) {
+				throw new Error('Error Main '+(typeof Main)+' - SIP '+(typeof SIP))
+				return;
+			}
+			__counter++;
+			setTimeout(function(){initialize();},500);
+			return false;
+		}
+		Toky.init(Config.company_id, Config.section_id, Config.option_id, Config.enable_auth, Config.callnow, Config.origin);	
+	} catch (e) {
+		console.error(e);
+		//Raven.captureException(e);
+	}
+}
+initialize();
